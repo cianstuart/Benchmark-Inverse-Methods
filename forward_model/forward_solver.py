@@ -54,8 +54,8 @@ class ForwardSolver:
             sources: np array of shape (N_SOURCE, SOURCE_DIM) where each row is (x, y, sigma, A)
 
         x,y are continuous coordinates of the source in range [0, 1], unit grid has NxN pixels
-        sigma is the normalized standard deviation of the Gaussian [0, 1], scaled to [0, 1/5] 
-        and A is the normalized amplitude [0,1], scaled to [0, 5].
+        sigma is the normalized standard deviation of the Gaussian [0.05, 1], scaled to [0.01, 0.2] (cant have zero standard deviation)
+        and A is the normalized amplitude [0,1], scaled to [0, 5] (allow zero amplitude sources to ).
 
         Forward model implements a diffusion-like process where each source gets spread out over the grid using the Laplacian.
         To make it nonlinear, we apply a tanh()-function after the diffusion step.
@@ -93,7 +93,7 @@ class ForwardSolver:
 
 
         for _ in range(n_iter):  
-            S += dt*self.calculate_laplacian(S)
+            S += dt*self.DIF_COEF*self.calculate_laplacian(S)
 
         # Compute the observed field T(x,y)
         T = np.tanh(S)
