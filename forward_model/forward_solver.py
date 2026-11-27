@@ -15,7 +15,7 @@ class ForwardSolver:
     def __init__(self, params):
         self.N = params.N
         self.DIF_COEF = params.DIF_COEF
-        self.DIF_ITER = params.DIF_ITER
+        self.DIF_TIME = params.DIF_TIME
         self.N_SOURCE = params.N_SOURCE
         self.SOURCE_DIM = params.SOURCE_DIM
 
@@ -30,19 +30,20 @@ class ForwardSolver:
 
     def calculate_laplacian(self, field):
         '''
-        Estimate the Laplacian of the field using finite differences. Grid has equal spacings of 1 in both x and y directions. 
-        Thus Laplacian(i,j) = field(i+1,j) + field(i-1,j) + field(i,j+1) + field(i,j-1) - 4*field(i,j).
+        Estimate the Laplacian of the field using finite differences. Grid has equal spacings of self.h in both x and y directions. 
+        Thus Laplacian(i,j) = (field(i+1,j) + field(i-1,j) + field(i,j+1) + field(i,j-1) - 4*field(i,j)) / self.h**2.
         Edge points are handled by assuming gradient is zero outside the grid (Neumann boundary conditions) thus pad with edge values.
         '''
         padded_field = np.pad(field, pad_width=1, mode='edge')
-        
+        h = self.h
+
         laplacian = (
             padded_field[2:, 1:-1] +                # one row below
             padded_field[:-2, 1:-1] +               # one row above
             padded_field[1:-1, 2:] +                # one column to the right
             padded_field[1:-1, :-2] -               # one column to the left
             4 * padded_field[1:-1, 1:-1]            # center point
-        )   
+        ) / h**2   
         return laplacian
 
     def forward(self, sources):
@@ -52,9 +53,9 @@ class ForwardSolver:
         Args:
             sources: np array of shape (N_SOURCE, SOURCE_DIM) where each row is (x, y, sigma, A)
 
-        x,y are continuous coordinates of the source in range [0, 1], scaled to the grid size N.
-        sigma is the standard deviation of the Gaussian, 
-        and A is the amplitude.
+        x,y are continuous coordinates of the source in range [0, 1], unit grid has NxN pixels
+        sigma is the normalized standard deviation of the Gaussian [0, 1], scaled to [0, 1/5] 
+        and A is the normalized amplitude [0,1], scaled to [0, 5].
 
         Forward model implements a diffusion-like process where each source gets spread out over the grid using the Laplacian.
         To make it nonlinear, we apply a tanh()-function after the diffusion step.
@@ -66,8 +67,11 @@ class ForwardSolver:
         assert sources_r.shape == (self.N_SOURCE, self.SOURCE_DIM), f"Sources should have shape ({self.N_SOURCE}, {self.SOURCE_DIM})"
         
         # Create a grid of coordinates
-        x = np.linspace(0, self.N - 1, self.N)
-        y = np.linspace(0, self.N - 1, self.N)
+        x = np.linspace(0, 1, self.N)
+        y = np.linspace(0, 1, self.N)
+
+        self.h = x[1] - x[0] # pixel size
+
         X, Y = np.meshgrid(x, y)
 
         # Initialize the source field S(x,y)
@@ -76,13 +80,20 @@ class ForwardSolver:
         # Sum contributions from each source
         for i in range(self.N_SOURCE):
             x_i, y_i, sigma_i, A_i = sources_r[i]
-            x_i, y_i = x_i * (self.N - 1), y_i * (self.N - 1)  # Scale to grid size
+            # Scale the source parameters to the grid   
+            sigma_i = sigma_i / 5  # Scale sigma to [0, 1/5]
+            A_i = A_i * 5  # Scale A to [0, 5]
             G_i = A_i * np.exp(-((X - x_i)**2 + (Y - y_i)**2) / (2 * sigma_i**2))
             S += G_i
 
         # Diffusion iterations
-        for _ in range(self.DIF_ITER):  
-            S += self.DIF_COEF*self.calculate_laplacian(S)
+        dt = 0.2 * self.h**2 / self.DIF_COEF  # stable dt uses 0.25, 0.2 for safety
+        n_iter = int(np.ceil(self.DIF_TIME / dt))
+        dt = self.DIF_TIME / n_iter  # adjust dt to match total diffusion time
+
+
+        for _ in range(n_iter):  
+            S += dt*self.calculate_laplacian(S)
 
         # Compute the observed field T(x,y)
         T = np.tanh(S)
