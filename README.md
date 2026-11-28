@@ -1,6 +1,7 @@
 # Benchmark-Inverse-Methods
 This repository implements optimization and machine learning methods to solve a synthetic inverse problem.
-<img width="1907" height="965" alt="image" src="visual/forward_model/forward_solver_1000.png />
+<img width="993" height="839" alt="image" src="https://github.com/user-attachments/assets/30e20ec6-4614-4a57-9418-bb422bd3fe6a" />
+
 ## Forward solver 
 
 Run the solver test with:
